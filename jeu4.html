@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Arducible — Neon Beat</title>
+    <meta name="theme-color" content="#030508">
+    <link rel="icon" href="./img/Arducible.png" type="image/png">
+    <link rel="manifest" href="./manifest.json">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&display=swap');
+        :root { --void-bg: #030508; }
+        * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+        body { background: var(--void-bg); font-family: 'Orbitron', sans-serif; width: 100vw; height: 100vh; overflow: hidden; }
+        #gc { display: block; position: absolute; top: 0; left: 0; }
+
+        /* ── HUD ── */
+        #hud { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 5; }
+        .hud-tl { position: absolute; top: 18px; left: 26px; display: flex; flex-direction: column; gap: 2px; }
+        .hud-tr { position: absolute; top: 18px; right: 26px; text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+        .hud-tc { position: absolute; top: 18px; left: 50%; transform: translateX(-50%); width: 220px; text-align: center; }
+        .hud-label { font-size: 0.6rem; letter-spacing: 4px; color: rgba(255,255,255,0.28); text-transform: uppercase; }
+        .hud-value { font-size: 1.9rem; font-weight: 900; color: #fffb00; text-shadow: 0 0 12px #fffb00; font-variant-numeric: tabular-nums; }
+        
+        /* Barre d'énergie */
+        .energy-bar-bg { width: 100%; height: 8px; background: rgba(255,255,255,0.08); border-radius: 4px; border: 1px solid rgba(255,255,255,0.1); overflow: hidden; margin-top: 4px; }
+        .energy-bar-fill { width: 100%; height: 100%; background: linear-gradient(90deg, #ff0055, #00f0ff); box-shadow: 0 0 10px #00f0ff; transition: width 0.1s ease; }
+        
+        /* Combo Streak UI */
+        .combo-container { font-size: 1.5rem; font-weight: 900; color: #00f0ff; text-shadow: 0 0 10px #00f0ff; }
+        .multiplier-badge { font-size: 0.8rem; background: #ff00ff; color: #000; padding: 2px 6px; border-radius: 4px; font-weight: 900; margin-left: 6px; vertical-align: middle; text-shadow: none; box-shadow: 0 0 8px #ff00ff; }
+
+        /* ── OVERLAYS ── */
+        .overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(3,5,8,0.94); display: flex; flex-direction: column;
+            align-items: center; justify-content: center; z-index: 100; text-align: center;
+            border: 8px solid transparent;
+            border-image: linear-gradient(to right, transparent, #fffb00, transparent) 1;
+        }
+        .overlay.hidden { display: none; }
+        .overlay h2 { font-size: 3.8rem; font-weight: 900; letter-spacing: 6px; color: transparent; -webkit-text-stroke: 2px #fffb00; text-shadow: 0 0 20px #fffb00; margin-bottom: 12px; }
+        .overlay p  { color: #a4b3c6; font-size: 1.2rem; margin-bottom: 28px; max-width: 640px; line-height: 1.7; }
+        .btn-arcade { background: transparent; border: 3px solid #39ff14; color: #39ff14; padding: 15px 46px; font-size: 1.6rem; font-weight: bold; text-transform: uppercase; border-radius: 4px; cursor: pointer; box-shadow: 0 0 20px #39ff14, inset 0 0 10px rgba(57,255,20,0.3); font-family: 'Orbitron', sans-serif; transition: all 0.2s ease; margin: 8px; }
+        .btn-arcade:hover { background: #39ff14; color: #000; }
+        .btn-menu { border-color: #ff9900; color: #ff9900; box-shadow: 0 0 20px #ff9900, inset 0 0 10px rgba(255,153,0,0.3); }
+        .btn-menu:hover { background: #ff9900; color: #000; }
+        .hardware-hints { display: flex; gap: 18px; margin-top: 20px; font-size: 0.9rem; color: #a4b3c6; flex-wrap: wrap; justify-content: center; }
+        .hint-box { border: 1px solid #252525; padding: 6px 14px; border-radius: 8px; background: rgba(0,0,0,0.5); }
+        .hint-box span { color: #fffb00; font-weight: bold; }
+
+        /* ── PORTRAIT ── */
+        #portrait-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: var(--void-bg); z-index: 9999; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 20px; }
+        @media (orientation: portrait) { #portrait-overlay { display: flex; } }
+        .rotate-icon { font-size: 5rem; color: #fffb00; text-shadow: 0 0 30px #fffb00; animation: rd 1.5s ease-in-out infinite; }
+        @keyframes rd { 0%{transform:rotate(0deg)} 50%{transform:rotate(90deg)} 100%{transform:rotate(90deg)} }
+    </style>
+</head>
+<body>
+    <div id="portrait-overlay">
+        <div class="rotate-icon">&#x21BB;</div>
+        <p style="font-size:1.8rem;font-weight:900;color:#fffb00;text-shadow:0 0 15px #fffb00;letter-spacing:4px;text-transform:uppercase;">Tournez votre appareil</p>
+        <p style="font-size:1rem;color:#a4b3c6;letter-spacing:2px;">Ce jeu nécessite le mode paysage</p>
+    </div>
+
+    <canvas id="gc"></canvas>
+
+    <div id="hud">
+        <div class="hud-tl">
+            <div class="hud-label">Score</div>
+            <div id="hud-score" class="hud-value">0</div>
+        </div>
+        <div class="hud-tc">
+            <div class="hud-label">Énergie synchrone</div>
+            <div class="energy-bar-bg">
+                <div id="energy-bar" class="energy-bar-fill"></div>
+            </div>
+        </div>
+        <div class="hud-tr">
+            <div class="hud-label">Série combo</div>
+            <div class="combo-container">
+                <span id="hud-combo">0</span><span id="hud-mult" class="multiplier-badge">x1</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- START -->
+    <div id="start-screen" class="overlay">
+        <h2>NEON BEAT</h2>
+        <p>Prenez votre temps. Une seule cible lumineuse descendra à la fois.<br>Vous avez 3 boules. Après le troisième tir, la piste se mettra en pause 12 secondes pour vous laisser le temps de ramasser.</p>
+        <div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center;">
+            <button class="btn-arcade" onclick="startGame()">DÉMARRER</button>
+            <button class="btn-arcade btn-menu" onclick="exitToMenu()">← MENU</button>
+        </div>
+        <div class="hardware-hints">
+            <div class="hint-box"><span>E</span> Voie Gauche</div>
+            <div class="hint-box"><span>R</span> Voie Centrale</div>
+            <div class="hint-box"><span>T</span> Voie Droite · Start</div>
+        </div>
+    </div>
+
+    <!-- GAME OVER -->
+    <div id="gameover-screen" class="overlay hidden">
+        <h2 style="-webkit-text-stroke-color:#ff0044;text-shadow:0 0 20px #ff0044;">DÉSYNCHRONISATION</h2>
+        <p id="go-text">Score final : 0</p>
+        <div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center;">
+            <button class="btn-arcade" onclick="startGame()">REJOUER</button>
+            <button class="btn-arcade btn-menu" onclick="exitToMenu()">← MENU</button>
+        </div>
+        <div class="hardware-hints">
+            <div class="hint-box">Frappez <span>CIBLE 3</span> pour rejouer</div>
+            <div class="hint-box"><span>CIBLE 1</span> — Menu principal</div>
+        </div>
+    </div>
+
+    <script>
+    // =========================================================================
+    // NEON BEAT — jeu4.html · Rhythm Game (Pétanque Pace)
+    // =========================================================================
+
+    const canvas = document.getElementById('gc');
+    const ctx    = canvas.getContext('2d');
+
+    function resizeCanvas() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
+    resizeCanvas();
+    window.addEventListener('resize', () => { resizeCanvas(); computeLayout(); });
+
+    // ── CONFIGURATION DU RYTHME (RYTHME PÉTANQUE ULTRA LENT) ─────────────────
+    const CFG = {
+        laneXFracs:     [0.25, 0.50, 0.75],
+        hitZoneYFrac:   0.82,          
+        noteSpeed:      90,            // Très lent: le bloc met ~10s à traverser l'écran
+        perfectWindow:  120,           // Fenêtre de tolérance géante pour la pétanque
+        goodWindow:     200,           
+        missWindow:     300,           
+        maxEnergy:      100,
+        energyLossMiss: 10,
+        energyGainPerf: 15,
+        energyGainGood: 8,
+        laneColors:     ['#00f0ff', '#ff00ff', '#fffb00'],
+        feedbackColors: { perfect: '#39ff14', good: '#00f0ff', miss: '#ff0044' }
+    };
+
+    let laneX = [], hitZoneY;
+    function computeLayout() {
+        laneX = CFG.laneXFracs.map(f => canvas.width * f);
+        hitZoneY = canvas.height * CFG.hitZoneYFrac;
+    }
+
+    // ── MOTEUR AUDIO ──────────────────────────────
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+    function playTone(freq, type, vol, dur, offset = 0) {
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        const t = audioCtx.currentTime + offset;
+        const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+        o.type = type; o.frequency.setValueAtTime(freq, t);
+        g.gain.setValueAtTime(vol, t);
+        g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+        o.connect(g); g.connect(audioCtx.destination);
+        o.start(t); o.stop(t + dur);
+    }
+
+    function sfx(type) {
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        if (type === 'perfect')  { playTone(880, 'sine', 0.12, 0.08); playTone(1760, 'sine', 0.06, 0.05, 0.03); }
+        if (type === 'good')     { playTone(587.33, 'sine', 0.10, 0.10); }
+        if (type === 'miss')     { playTone(130, 'sawtooth', 0.15, 0.18); }
+        if (type === 'gameover') { [293, 220, 146, 110].forEach((f, i) => playTone(f, 'triangle', 0.15, 0.3, i * 0.14)); }
+        if (type === 'start')    { [440, 554, 659, 880].forEach((f, i) => playTone(f, 'square', 0.08, 0.12, i * 0.07)); }
+    }
+
+    // ── GENERATION DE LA PISTE DYNAMIQUE (1 seule note à la fois) ────────────
+    const BEAT_DURATION = 0.25; // 120 BPM
+    const rhythmTrack = [];
+    const tirs = [0, 1, 2, 1, 0, 2, 2, 1, 0, 0, 2, 1]; // Séquence cyclique
+
+    tirs.forEach((cible, index) => {
+        rhythmTrack.push(cible);
+        
+        // 23 silences x 0.25s = ~6 secondes d'attente avant la prochaine note
+        for(let i=0; i<23; i++) rhythmTrack.push(-1);
+        
+        // Toutes les 3 boules, on ajoute une pause de 12 secondes pour ramasser
+        if ((index + 1) % 3 === 0) {
+            for(let i=0; i<48; i++) rhythmTrack.push(-1);
+        }
+    });
+    
+    const bassPattern = [110, 110, 130, 110, 146, 146, 130, 110];
+
+    let musicActive = false, musicStep = 0, nextBeatTime = 0, musicTimer = null;
+
+    function scheduleBeat() {
+        while (nextBeatTime < audioCtx.currentTime + 0.12) {
+            const currentStep = musicStep % rhythmTrack.length;
+            const noteLane = rhythmTrack[currentStep];
+
+            const mVol = energy < 30 ? 0.01 : 0.05; 
+            const bVol = energy < 30 ? 0.03 : 0.08; 
+
+            if (musicStep % 4 === 0) {
+                playTone(60, 'triangle', bVol * 2, 0.15, nextBeatTime - audioCtx.currentTime);
+            }
+
+            const bassFreq = bassPattern[musicStep % bassPattern.length];
+            playTone(bassFreq, energy < 30 ? 'triangle' : 'square', bVol, BEAT_DURATION * 0.9, nextBeatTime - audioCtx.currentTime);
+
+            if (noteLane >= 0 && gameState === 'PLAYING') {
+                const lookahead = hitZoneY / CFG.noteSpeed;
+                spawnNote(noteLane, nextBeatTime - audioCtx.currentTime + lookahead);
+                
+                const freqs = [329.63, 440.00, 523.25];
+                playTone(freqs[noteLane], 'sawtooth', mVol, BEAT_DURATION, nextBeatTime - audioCtx.currentTime);
+            }
+
+            nextBeatTime += BEAT_DURATION;
+            musicStep++;
+        }
+        if (musicActive) musicTimer = setTimeout(scheduleBeat, 20);
+    }
+
+    function startMusic() {
+        if (musicActive) return;
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        musicActive = true; musicStep = 0; nextBeatTime = audioCtx.currentTime + 0.05;
+        scheduleBeat();
+    }
+    function stopMusic() { musicActive = false; clearTimeout(musicTimer); }
+
+    // ── GAME STATE & ENGINE VARIABLES ─────────────────────────────────────────
+    let gameState = 'START';
+    let score = 0, combo = 0, maxCombo = 0, energy = CFG.maxEnergy;
+    let notes = [], visualEffects = [];
+    let lastTime = 0, frameId = null;
+
+    const HS_KEY = 'neonbeat_highscore';
+    const getHS  = () => parseInt(localStorage.getItem(HS_KEY) || '0', 10);
+    const saveHS = s  => { if (s > getHS()) localStorage.setItem(HS_KEY, s); };
+
+    function getMultiplier() {
+        if (combo >= 40) return 4;
+        if (combo >= 20) return 3;
+        if (combo >= 10) return 2;
+        return 1;
+    }
+
+    function spawnNote(lane, timeToReach) {
+        notes.push({
+            lane,
+            y: -20,
+            targetTime: Date.now() + timeToReach * 1000,
+            hit: false,
+            missed: false
+        });
+    }
+
+    // ── TIMING LOGIC ──────────────────────────────────
+    function registerHit(lane) {
+        if (gameState !== 'PLAYING') return;
+
+        const laneNotes = notes.filter(n => n.lane === lane && !n.hit && !n.missed);
+        if (laneNotes.length === 0) return;
+
+        const targetNote = laneNotes[0];
+        const dist = Math.abs(targetNote.y - hitZoneY);
+
+        if (dist <= CFG.perfectWindow) {
+            targetNote.hit = true;
+            handleHitResult('perfect', targetNote);
+        } else if (dist <= CFG.goodWindow) {
+            targetNote.hit = true;
+            handleHitResult('good', targetNote);
+        } else if (dist <= CFG.missWindow) {
+            targetNote.hit = true;
+            handleHitResult('miss', targetNote);
+        }
+    }
+
+    function handleHitResult(rating, note) {
+        if (rating === 'perfect') {
+            combo++;
+            score += 150 * getMultiplier();
+            energy = Math.min(CFG.maxEnergy, energy + CFG.energyGainPerf);
+            sfx('perfect');
+            spawnShockwave(laneX[note.lane], hitZoneY, CFG.feedbackColors.perfect, 'PERFECT');
+        } else if (rating === 'good') {
+            combo++;
+            score += 75 * getMultiplier();
+            energy = Math.min(CFG.maxEnergy, energy + CFG.energyGainGood);
+            sfx('good');
+            spawnShockwave(laneX[note.lane], hitZoneY, CFG.feedbackColors.good, 'GOOD');
+        } else {
+            combo = 0;
+            energy = Math.max(0, energy - CFG.energyLossMiss);
+            sfx('miss');
+            spawnShockwave(laneX[note.lane], note.y, CFG.feedbackColors.miss, 'MISS'); // BUG CORRIGÉ ICI
+            checkGameOver();
+        }
+        updateHUD();
+    }
+
+    function spawnShockwave(x, y, color, label) {
+        visualEffects.push({
+            x, y, color, label,
+            radius: 15, maxRadius: 65, opacity: 1, life: 1.0
+        });
+    }
+
+    function checkGameOver() {
+        if (energy <= 0) setTimeout(endGame, 300);
+    }
+
+    function updateHUD() {
+        document.getElementById('hud-score').innerText = score;
+        document.getElementById('hud-combo').innerText = combo;
+        document.getElementById('hud-mult').innerText = 'x' + getMultiplier();
+        document.getElementById('energy-bar').style.width = energy + '%';
+        
+        if (energy < 30) {
+            document.getElementById('energy-bar').style.background = '#ff0044';
+            document.getElementById('energy-bar').style.boxShadow = '0 0 15px #ff0044';
+        } else {
+            document.getElementById('energy-bar').style.background = 'linear-gradient(90deg, #ff0055, #00f0ff)';
+            document.getElementById('energy-bar').style.boxShadow = '0 0 10px #00f0ff';
+        }
+    }
+
+    // ── RENDER CORE & UPDATE ENGINE ───────────────────────────────────────────
+    function updateGame(dt) {
+        notes.forEach(n => {
+            if (!n.hit && !n.missed) {
+                n.y += CFG.noteSpeed * dt;
+
+                if (n.y > hitZoneY + CFG.goodWindow) {
+                    n.missed = true;
+                    combo = 0;
+                    energy = Math.max(0, energy - CFG.energyLossMiss);
+                    sfx('miss');
+                    spawnShockwave(laneX[n.lane], hitZoneY, CFG.feedbackColors.miss, 'MANQUÉ');
+                    updateHUD();
+                    checkGameOver();
+                }
+            }
+        });
+
+        visualEffects.forEach(e => {
+            e.radius += (e.maxRadius - e.radius) * Math.min(1, dt * 10);
+            e.opacity -= dt * 2.2;
+            e.life -= dt * 2.2;
+        });
+
+        notes = notes.filter(n => !n.hit && !n.missed);
+        visualEffects = visualEffects.filter(e => e.life > 0);
+    }
+
+    function drawGame() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        ctx.fillStyle = '#030508'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.03)'; ctx.lineWidth = 1;
+        for (let x = 0; x <= canvas.width; x += 60) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke(); }
+        for (let y = 0; y <= canvas.height; y += 60) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke(); }
+
+        laneX.forEach((lx, i) => {
+            ctx.save();
+            ctx.strokeStyle = 'rgba(255,255,255,0.06)'; ctx.lineWidth = 4;
+            ctx.beginPath(); ctx.moveTo(lx, 0); ctx.lineTo(lx, canvas.height); ctx.stroke();
+            
+            ctx.fillStyle = CFG.laneColors[i]; ctx.globalAlpha = 0.04;
+            ctx.fillRect(lx - 45, 0, 90, canvas.height);
+            ctx.restore();
+        });
+
+        ctx.save();
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(0, hitZoneY); ctx.lineTo(canvas.width, hitZoneY); ctx.stroke();
+        ctx.restore();
+
+        laneX.forEach((lx, i) => {
+            ctx.save();
+            ctx.strokeStyle = CFG.laneColors[i]; ctx.lineWidth = 3;
+            ctx.shadowBlur = 12; ctx.shadowColor = CFG.laneColors[i];
+            ctx.fillStyle = '#030508';
+            ctx.beginPath(); ctx.arc(lx, hitZoneY, 22, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+            
+            ctx.font = 'bold 12px Orbitron'; ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.shadowBlur = 0;
+            ctx.fillText(['E', 'R', 'T'][i], lx, hitZoneY);
+            ctx.restore();
+        });
+
+        notes.forEach(n => {
+            if (n.hit || n.missed) return;
+            ctx.save();
+            const col = CFG.laneColors[n.lane];
+            ctx.fillStyle = col; ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.5;
+            ctx.shadowBlur = 16; ctx.shadowColor = col;
+            
+            ctx.beginPath();
+            ctx.roundRect(laneX[n.lane] - 30, n.y - 10, 60, 20, 6);
+            ctx.fill(); ctx.stroke();
+            ctx.restore();
+        });
+
+        visualEffects.forEach(e => {
+            ctx.save(); ctx.globalAlpha = Math.max(0, e.opacity);
+            ctx.strokeStyle = e.color; ctx.lineWidth = 4; ctx.shadowBlur = 15; ctx.shadowColor = e.color;
+            ctx.beginPath(); ctx.arc(e.x, e.y, e.radius, 0, Math.PI * 2); ctx.stroke();
+
+            ctx.font = '900 1.2rem Orbitron'; ctx.fillStyle = e.color;
+            ctx.textAlign = 'center'; ctx.fillText(e.label, e.x, e.y - e.radius - 12);
+            ctx.restore();
+        });
+    }
+
+    function gameLoop(ts) {
+        if (gameState !== 'PLAYING') return;
+        if (!lastTime) lastTime = ts;
+        const dt = Math.min((ts - lastTime) / 1000, 0.05);
+        lastTime = ts;
+
+        updateGame(dt);
+        drawGame();
+        frameId = requestAnimationFrame(gameLoop);
+    }
+
+    // ── MANAGEMENT ───────────────────────────────
+    function startGame() {
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        score = 0; combo = 0; energy = CFG.maxEnergy;
+        notes = []; visualEffects = [];
+        computeLayout();
+        updateHUD();
+
+        document.getElementById('start-screen').classList.add('hidden');
+        document.getElementById('gameover-screen').classList.add('hidden');
+        
+        gameState = 'PLAYING';
+        lastTime = 0;
+        sfx('start');
+        startMusic();
+        frameId = requestAnimationFrame(gameLoop);
+    }
+
+    function endGame() {
+        gameState = 'GAME_OVER';
+        stopMusic();
+        sfx('gameover');
+        cancelAnimationFrame(frameId);
+        saveHS(score);
+
+        document.getElementById('go-text').innerHTML = 
+            `Score Final : <strong style="color:#fffb00">${score}</strong>&nbsp;&nbsp;|&nbsp;&nbsp;` +
+            `Record local : <strong style="color:#00f0ff">${getHS()}</strong>`;
+        document.getElementById('gameover-screen').classList.remove('hidden');
+    }
+
+    function exitToMenu() {
+        stopMusic();
+        cancelAnimationFrame(frameId);
+        window.location.href = './index.html';
+    }
+
+    // ── ÉCOUTEURS D'ENTRÉES ARDUINO LEONARDO ───────────────────────────
+    window.addEventListener('keydown', e => {
+        if (e.repeat) return;
+        const k = e.key.toLowerCase();
+
+        if (e.key === 'Escape') { exitToMenu(); return; }
+
+        if (gameState === 'PLAYING') {
+            if (k === 'e') registerHit(0);
+            else if (k === 'r') registerHit(1);
+            else if (k === 't') registerHit(2);
+        } else if (gameState === 'GAME_OVER' || gameState === 'START') {
+            if (k === 't') startGame();
+            else if (k === 'e') exitToMenu();
+        }
+    });
+
+    computeLayout();
+    ctx.fillStyle = '#030508'; ctx.fillRect(0,0,canvas.width,canvas.height);
+
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js'));
+    }
+
+    function lockOrientation() {
+        if (screen.orientation && screen.orientation.lock) {
+            screen.orientation.lock('landscape-primary').catch(() => {});
+        }
+    }
+    window.addEventListener('load', lockOrientation);
+    window.addEventListener('orientationchange', lockOrientation);
+    </script>
+</body>
+</html>
