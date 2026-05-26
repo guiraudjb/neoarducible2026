@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Arducible Pétanque - Édition Finale V11 (Tempo Ajusté)</title>
     <meta name="theme-color" content="#030508">
+    <link rel="manifest" href="./manifest.json">
     
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&display=swap');
@@ -688,5 +689,12 @@
 
         drawVFX();
     </script>
+    <script>
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('./sw.js');
+        });
+    }
+</script>
 </body>
 </html>
