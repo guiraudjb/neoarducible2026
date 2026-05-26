@@ -1,0 +1,679 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Arducible — Turbo Néon</title>
+    <meta name="theme-color" content="#030508">
+    <link rel="icon" href="./img/Arducible.png" type="image/png">
+    <link rel="manifest" href="./manifest.json">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&display=swap');
+        :root { --void-bg: #030508; }
+        * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+        body { background: var(--void-bg); font-family: 'Orbitron', sans-serif; width: 100vw; height: 100vh; overflow: hidden; }
+        #gc { display: block; position: absolute; top: 0; left: 0; }
+
+        /* ── HUD ── */
+        #hud { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 5; }
+        .hud-tl { position: absolute; top: 18px; left: 26px; display: flex; flex-direction: column; gap: 2px; }
+        .hud-tr { position: absolute; top: 18px; right: 26px; text-align: right; }
+        .hud-label { font-size: 0.6rem; letter-spacing: 4px; color: rgba(255,255,255,0.28); text-transform: uppercase; }
+        .hud-value { font-size: 1.9rem; font-weight: 900; color: #00f0ff; text-shadow: 0 0 12px #00f0ff; font-variant-numeric: tabular-nums; }
+        .lives-row { display: flex; gap: 7px; margin-top: 4px; justify-content: flex-end; }
+        .life-heart { font-size: 1.3rem; color: #ff0044; text-shadow: 0 0 8px #ff0044; }
+        .life-heart.dead { color: #2a1a1a; text-shadow: none; }
+
+        /* ── OVERLAYS ── */
+        .overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(3,5,8,0.94); display: flex; flex-direction: column;
+            align-items: center; justify-content: center; z-index: 100; text-align: center;
+            border: 8px solid transparent;
+            border-image: linear-gradient(to right, transparent, #00f0ff, transparent) 1;
+        }
+        .overlay.hidden { display: none; }
+        .overlay h2 { font-size: 3.8rem; font-weight: 900; letter-spacing: 6px; color: transparent; -webkit-text-stroke: 2px #00f0ff; text-shadow: 0 0 20px #00f0ff; margin-bottom: 12px; }
+        .overlay p  { color: #a4b3c6; font-size: 1.2rem; margin-bottom: 28px; max-width: 640px; line-height: 1.7; }
+        .btn-arcade { background: transparent; border: 3px solid #39ff14; color: #39ff14; padding: 15px 46px; font-size: 1.6rem; font-weight: bold; text-transform: uppercase; border-radius: 4px; cursor: pointer; box-shadow: 0 0 20px #39ff14, inset 0 0 10px rgba(57,255,20,0.3); font-family: 'Orbitron', sans-serif; transition: all 0.2s ease; margin: 8px; }
+        .btn-arcade:hover { background: #39ff14; color: #000; }
+        .btn-menu { border-color: #ff9900; color: #ff9900; box-shadow: 0 0 20px #ff9900, inset 0 0 10px rgba(255,153,0,0.3); }
+        .btn-menu:hover { background: #ff9900; color: #000; }
+        .hardware-hints { display: flex; gap: 18px; margin-top: 20px; font-size: 0.9rem; color: #a4b3c6; flex-wrap: wrap; justify-content: center; }
+        .hint-box { border: 1px solid #252525; padding: 6px 14px; border-radius: 8px; background: rgba(0,0,0,0.5); }
+        .hint-box span { color: #00f0ff; font-weight: bold; }
+
+        /* ── PORTRAIT ── */
+        #portrait-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: var(--void-bg); z-index: 9999; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 20px; }
+        @media (orientation: portrait) { #portrait-overlay { display: flex; } }
+        .rotate-icon { font-size: 5rem; color: #00f0ff; text-shadow: 0 0 30px #00f0ff; animation: rd 1.5s ease-in-out infinite; }
+        @keyframes rd { 0%{transform:rotate(0deg)} 50%{transform:rotate(90deg)} 100%{transform:rotate(90deg)} }
+    </style>
+</head>
+<body>
+    <div id="portrait-overlay">
+        <div class="rotate-icon">&#x21BB;</div>
+        <p style="font-size:1.8rem;font-weight:900;color:#00f0ff;text-shadow:0 0 15px #00f0ff;letter-spacing:4px;text-transform:uppercase;">Tournez votre appareil</p>
+        <p style="font-size:1rem;color:#a4b3c6;letter-spacing:2px;">Ce jeu nécessite le mode paysage</p>
+    </div>
+
+    <canvas id="gc"></canvas>
+
+    <div id="hud">
+        <div class="hud-tl">
+            <div class="hud-label">Distance</div>
+            <div id="hud-dist" class="hud-value">0.00 km</div>
+        </div>
+        <div class="hud-tr">
+            <div class="hud-label">Vies</div>
+            <div class="lives-row" id="lives-row"></div>
+        </div>
+    </div>
+
+    <!-- START -->
+    <div id="start-screen" class="overlay">
+        <h2>TURBO NÉON</h2>
+        <p>Évitez les véhicules adverses.<br>Chaque cible correspond à une voie. Survivez le plus longtemps possible.</p>
+        <div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center;">
+            <button class="btn-arcade" onclick="startGame()">DÉMARRER</button>
+            <button class="btn-arcade btn-menu" onclick="exitToMenu()">← MENU</button>
+        </div>
+        <div class="hardware-hints">
+            <div class="hint-box"><span>E</span> Voie gauche</div>
+            <div class="hint-box"><span>R</span> Voie centrale</div>
+            <div class="hint-box"><span>T</span> Voie droite · Start</div>
+        </div>
+    </div>
+
+    <!-- GAME OVER -->
+    <div id="gameover-screen" class="overlay hidden">
+        <h2 style="-webkit-text-stroke-color:#ff0044;text-shadow:0 0 20px #ff0044;">CRASH !</h2>
+        <p id="go-text">Distance : 0.00 km</p>
+        <div style="display:flex;gap:12px;flex-wrap:wrap;justify-content:center;">
+            <button class="btn-arcade" onclick="startGame()">REJOUER</button>
+            <button class="btn-arcade btn-menu" onclick="exitToMenu()">← MENU</button>
+        </div>
+        <div class="hardware-hints">
+            <div class="hint-box">Frappez <span>CIBLE 3</span> pour rejouer</div>
+            <div class="hint-box"><span>CIBLE 1</span> — Menu principal</div>
+        </div>
+    </div>
+
+    <script>
+    // =========================================================================
+    // TURBO NÉON — jeu3.html · Racing OutRun-style · Arducible Kiosk
+    // =========================================================================
+
+    const canvas = document.getElementById('gc');
+    const ctx    = canvas.getContext('2d');
+
+    function resizeCanvas() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
+    resizeCanvas();
+    window.addEventListener('resize', () => { resizeCanvas(); computeRoad(); initSkyline(); });
+
+    // ── CONFIG ────────────────────────────────────────────────────────────────
+    const CFG = {
+        horizonFrac:    0.42,
+        roadTopFrac:    0.17,
+        roadBotFrac:    0.90,
+        laneOffsets:   [-0.28, 0, 0.28],  // fraction of road half-width
+        playerYOffset:  110,               // px above bottom
+        baseSpeed:      90,
+        maxSpeed:       310,
+        speedGain:      3.5,    // km/h per second
+        speedPenalty:   200,    // km/h lost on collision
+        lives:          3,
+        invulDuration:  2200,  // ms after hit
+        enemyDepthGain: 0.00095, // depth units per km/h per second
+        spawnIntervalBase: 1800, // ms
+        spawnIntervalMin:  500,
+        gridLines:      22,
+        gridScrollRate: 0.0024, // scroll per km/h per second
+        enemyColors:   ['#ff00ff','#00f0ff','#ff9900','#fffb00','#ff0044'],
+        enemyTypes:    [
+            { w:28, h:42, label:'SEDAN'  },
+            { w:34, h:38, label:'SUV'    },
+            { w:42, h:50, label:'TRUCK'  }
+        ]
+    };
+
+    // ── ROAD GEOMETRY ─────────────────────────────────────────────────────────
+    let horizonY, playerY, roadTopW, roadBotW;
+    let laneXBottom = [], laneXHorizon = [];
+
+    function computeRoad() {
+        horizonY  = canvas.height * CFG.horizonFrac;
+        playerY   = canvas.height - CFG.playerYOffset;
+        roadTopW  = canvas.width  * CFG.roadTopFrac;
+        roadBotW  = canvas.width  * CFG.roadBotFrac;
+        const halfTop = roadTopW / 2, halfBot = roadBotW / 2;
+        laneXBottom  = CFG.laneOffsets.map(o => canvas.width/2 + o * halfBot);
+        laneXHorizon = CFG.laneOffsets.map(o => canvas.width/2 + o * halfTop);
+    }
+
+    function lerp(a, b, t) { return a + (b - a) * t; }
+
+    function depthProject(depth, lane) {
+        const tP = depth * depth;
+        const y  = horizonY + (playerY - horizonY) * tP;
+        const x  = lerp(laneXHorizon[lane], laneXBottom[lane], tP);
+        const sc = lerp(0.05, 1.0, tP);
+        return { x, y, sc };
+    }
+
+    // ── AUDIO ─────────────────────────────────────────────────────────────────
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+    function playTone(freq, type, vol, dur, offset = 0) {
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        const t = audioCtx.currentTime + offset;
+        const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+        o.type = type; o.frequency.setValueAtTime(freq, t);
+        g.gain.setValueAtTime(vol, t);
+        g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+        o.connect(g); g.connect(audioCtx.destination);
+        o.start(t); o.stop(t + dur);
+    }
+
+    function sfx(type) {
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        if (type === 'swerve')   { playTone(440,'square',0.06,0.05); playTone(880,'square',0.04,0.06,0.04); }
+        if (type === 'crash')    { [220,160,110,80].forEach((f,i)=>playTone(f,'sawtooth',0.18,0.22,i*0.06)); }
+        if (type === 'engine')   { playTone(80+speed*0.4,'sawtooth',0.04,0.08); }
+        if (type === 'gameover') { [440,330,220,110].forEach((f,i)=>playTone(f,'triangle',0.14,0.3,i*0.15)); }
+        if (type === 'start')    { [330,440,550,660].forEach((f,i)=>playTone(f,'square',0.08,0.12,i*0.07)); }
+    }
+
+    // ── RACE LONGTRACK MUSIC (E minor, 24-section) ────────────────────────────
+    const MS  = [329.63,370,392,440,493.88,523.25,587.33,659.25,739.99,783.99];
+    const MB  = [82.41,92.5,98,110,123.47,130.81,146.83,164.81];
+    const MM  = {
+        A: [4,4,6,4, 3,3,5,3, 4,4,6,7, 5,4,3,-1],
+        B: [7,6,5,4, 6,5,4,3, 5,4,3,2, 4,2,2,-1],
+        C: [2,3,4,5, 4,3,2,1, 5,6,7,6, 5,3,2,-1],
+        D: [9,8,7,6, 8,7,6,5, 7,9,8,7, 6,5,4,-1]
+    };
+    const MBL = {
+        A: [0,0,2,0, 3,3,2,0, 0,0,2,3, 4,0,0,0],
+        B: [5,5,4,3, 5,5,4,3, 4,4,3,2, 4,2,2,0],
+        C: [0,1,2,3, 2,1,0,5, 1,2,3,4, 3,2,1,0],
+        D: [6,6,5,4, 5,4,3,2, 6,5,4,3, 5,3,1,0]
+    };
+    const MA = ['A','A','B','B','C','C','A','A','D','D','B','C',
+                'A','D','C','B','A','A','D','C','B','A','C','D'];
+
+    let musicActive = false, musicStep = 0, nextNote = 0, musicTimer = null;
+
+    function scheduleNote() {
+        const ratio   = Math.min(speed / CFG.maxSpeed, 1);
+        const noteDur = 0.075 + (1 - ratio) * 0.045;
+        while (nextNote < audioCtx.currentTime + 0.10) {
+            const sect = MA[Math.floor(musicStep / 16) % MA.length];
+            const step = musicStep % 16;
+            const bi = MBL[sect][step];
+            if (bi >= 0) playTone(MB[bi],'square',0.06,noteDur*1.5,nextNote-audioCtx.currentTime);
+            const li = MM[sect][step];
+            if (li >= 0) {
+                playTone(MS[li],'sawtooth',0.04,noteDur*1.2,nextNote-audioCtx.currentTime);
+                if (step%4===0) playTone(MS[li]*1.5,'triangle',0.025,noteDur,nextNote-audioCtx.currentTime);
+            }
+            nextNote += noteDur; musicStep++;
+        }
+        if (musicActive) musicTimer = setTimeout(scheduleNote, 22);
+    }
+
+    function startMusic() {
+        if (musicActive) return;
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        musicActive = true; musicStep = 0; nextNote = audioCtx.currentTime + 0.05;
+        scheduleNote();
+    }
+    function stopMusic() { musicActive = false; clearTimeout(musicTimer); }
+
+    // ── GAME STATE ────────────────────────────────────────────────────────────
+    let gameState = 'START';
+    let speed = CFG.baseSpeed, distance = 0, lives = CFG.lives;
+    let playerLane = 1, playerX = 0, playerTargetX = 0;
+    let invulTimer = 0, flashTimer = 0;
+    let frameId = null, lastTime = 0;
+    let enemies = [], explosions = [], stars = [];
+    let gridOffset = 0, lastSpawn = 0;
+    let skyline = [];
+
+    // ── HIGH SCORE ────────────────────────────────────────────────────────────
+    const HS_KEY = 'turbo_highscore';
+    const getHS  = () => parseFloat(localStorage.getItem(HS_KEY) || '0');
+    const saveHS = d  => { if (d > getHS()) localStorage.setItem(HS_KEY, d.toFixed(2)); };
+
+    // ── BACKGROUND ───────────────────────────────────────────────────────────
+    function initStars() {
+        stars = Array.from({length: 60}, () => ({
+            x: Math.random() * canvas.width,
+            y: Math.random() * horizonY,
+            r: Math.random() * 1.3 + 0.2,
+            op: Math.random() * 0.5 + 0.15
+        }));
+    }
+
+    function initSkyline() {
+        skyline = [];
+        const cols = ['#ff00ff','#00f0ff','#ff9900'];
+        // Left side
+        let x = 10;
+        while (x < canvas.width * 0.12) {
+            const w = 18 + Math.floor(Math.random() * 44);
+            const h = 28 + Math.floor(Math.random() * (horizonY - 50));
+            skyline.push({ x, w, h, col: cols[skyline.length % 3], side: 0 });
+            x += w + 4 + Math.floor(Math.random() * 12);
+        }
+        // Right side
+        x = canvas.width * 0.88;
+        while (x < canvas.width - 10) {
+            const w = 18 + Math.floor(Math.random() * 44);
+            const h = 28 + Math.floor(Math.random() * (horizonY - 50));
+            skyline.push({ x, w, h, col: cols[skyline.length % 3], side: 1 });
+            x += w + 4 + Math.floor(Math.random() * 12);
+        }
+    }
+
+    // ── ENEMY SYSTEM ─────────────────────────────────────────────────────────
+    function spawnEnemy() {
+        const lane     = Math.floor(Math.random() * 3);
+        const typeIdx  = Math.floor(Math.random() * CFG.enemyTypes.length);
+        const colorIdx = Math.floor(Math.random() * CFG.enemyColors.length);
+        enemies.push({ lane, depth: 0.01, typeIdx, color: CFG.enemyColors[colorIdx], alive: true });
+    }
+
+    function updateEnemies(dt) {
+        const gain = CFG.enemyDepthGain * speed;
+        enemies.forEach(e => {
+            if (!e.alive) return;
+            e.depth += gain * dt;
+
+            // Collision check
+            if (e.depth >= 0.93 && invulTimer <= 0) {
+                if (e.lane === playerLane) {
+                    e.alive = false;
+                    spawnBurst(playerX, playerY, '#ff0044', 20);
+                    lives--;
+                    invulTimer  = CFG.invulDuration;
+                    flashTimer  = 800;
+                    speed       = Math.max(CFG.baseSpeed, speed - CFG.speedPenalty);
+                    sfx('crash');
+                    updateLivesUI();
+                    if (lives <= 0) { setTimeout(endGame, 400); }
+                }
+            }
+        });
+        enemies = enemies.filter(e => e.alive && e.depth < 1.15);
+    }
+
+    // ── EXPLOSIONS ───────────────────────────────────────────────────────────
+    function spawnBurst(x, y, col, n = 12) {
+        for (let i = 0; i < n; i++) {
+            const a = (i/n)*Math.PI*2 + Math.random()*0.4;
+            const s = 60 + Math.random()*100;
+            explosions.push({ x, y, vx: Math.cos(a)*s, vy: Math.sin(a)*s, life: 1, col, sz: 2+Math.random()*3 });
+        }
+    }
+    function updateExplosions(dt) {
+        explosions.forEach(e => { e.x+=e.vx*dt; e.y+=e.vy*dt; e.vx*=0.94; e.vy*=0.94; e.life-=dt*2; });
+        explosions = explosions.filter(e => e.life > 0);
+    }
+
+    // ── DRAW: BACKGROUND ─────────────────────────────────────────────────────
+    function drawSky() {
+        const g = ctx.createLinearGradient(0, 0, 0, horizonY);
+        g.addColorStop(0, '#060012'); g.addColorStop(0.65, '#120030'); g.addColorStop(1, '#1e003f');
+        ctx.fillStyle = g; ctx.fillRect(0, 0, canvas.width, horizonY);
+
+        stars.forEach(s => {
+            ctx.fillStyle = `rgba(255,255,255,${s.op})`;
+            ctx.shadowBlur = 0;
+            ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, Math.PI*2); ctx.fill();
+        });
+
+        // Synthwave sun
+        const sx = canvas.width / 2, sy = horizonY, sr = Math.min(80, canvas.height * 0.11);
+        ctx.save();
+        const sg = ctx.createRadialGradient(sx, sy, 0, sx, sy, sr);
+        sg.addColorStop(0,   'rgba(255,120,0,0.95)');
+        sg.addColorStop(0.45,'rgba(255,40,110,0.75)');
+        sg.addColorStop(1,   'rgba(180,0,140,0)');
+        ctx.beginPath(); ctx.arc(sx, sy, sr, Math.PI, 0);
+        ctx.fillStyle = sg; ctx.fill();
+        // Scan lines
+        ctx.fillStyle = 'rgba(6,0,18,0.55)';
+        const nl = 7;
+        for (let i = 1; i <= nl; i++) {
+            const ly = sy - (i/nl) * sr * 0.88;
+            const lw = Math.sqrt(Math.max(0, sr*sr - (sy-ly)*(sy-ly)));
+            ctx.fillRect(sx - lw, ly, lw*2, sr/nl*0.45);
+        }
+        // Sun rim
+        ctx.strokeStyle = '#ff4488'; ctx.lineWidth = 1.5; ctx.shadowBlur = 12; ctx.shadowColor = '#ff4488';
+        ctx.beginPath(); ctx.arc(sx, sy, sr, Math.PI, 0); ctx.stroke();
+        ctx.restore();
+    }
+
+    function drawSkyline() {
+        skyline.forEach(b => {
+            ctx.save();
+            ctx.strokeStyle = b.col; ctx.lineWidth = 1; ctx.shadowBlur = 5; ctx.shadowColor = b.col;
+            ctx.strokeRect(b.x, horizonY - b.h, b.w, b.h);
+            ctx.fillStyle = b.col; ctx.globalAlpha = 0.35; ctx.shadowBlur = 0;
+            for (let wy = horizonY - b.h + 4; wy < horizonY - 3; wy += 9)
+                for (let wx = b.x + 3; wx < b.x + b.w - 3; wx += 8)
+                    if ((wx + wy) % 5 > 1) ctx.fillRect(wx, wy, 3, 4);
+            ctx.restore();
+        });
+    }
+
+    // ── DRAW: ROAD ────────────────────────────────────────────────────────────
+    function drawRoad() {
+        const cx  = canvas.width / 2;
+        const htw = roadTopW / 2, hbw = roadBotW / 2;
+
+        // Asphalt fill
+        const rg = ctx.createLinearGradient(0, horizonY, 0, canvas.height);
+        rg.addColorStop(0, '#0a0a18'); rg.addColorStop(1, '#080810');
+        ctx.fillStyle = rg;
+        ctx.beginPath();
+        ctx.moveTo(cx-htw, horizonY); ctx.lineTo(cx+htw, horizonY);
+        ctx.lineTo(cx+hbw, canvas.height); ctx.lineTo(cx-hbw, canvas.height);
+        ctx.closePath(); ctx.fill();
+
+        // Road edges
+        ctx.save();
+        ctx.strokeStyle = '#ff00ff'; ctx.lineWidth = 2; ctx.shadowBlur = 14; ctx.shadowColor = '#ff00ff';
+        ctx.beginPath(); ctx.moveTo(cx-htw, horizonY); ctx.lineTo(cx-hbw, canvas.height); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(cx+htw, horizonY); ctx.lineTo(cx+hbw, canvas.height); ctx.stroke();
+        ctx.restore();
+    }
+
+    function drawRoadGrid() {
+        const H   = playerY - horizonY;
+        const cx  = canvas.width / 2;
+        const N   = CFG.gridLines;
+
+        for (let i = 0; i < N; i++) {
+            let t = (i / N + gridOffset) % 1.0;
+            const tP = t * t; // perspective: dense near horizon
+            const y  = horizonY + H * tP;
+            if (y < horizonY || y > playerY + 4) continue;
+            const frac = (y - horizonY) / H;
+            const rw   = lerp(roadTopW, roadBotW, frac);
+            ctx.strokeStyle = `rgba(0,240,255,${0.05 + frac * 0.2})`;
+            ctx.lineWidth   = Math.max(0.4, frac * 1.8);
+            ctx.shadowBlur  = 0;
+            ctx.beginPath(); ctx.moveTo(cx-rw/2, y); ctx.lineTo(cx+rw/2, y); ctx.stroke();
+        }
+
+        // Lane dividers (dashed, same perspective)
+        const divs = [
+            { lh: laneXHorizon[0]+((laneXHorizon[1]-laneXHorizon[0])/2), lb: laneXBottom[0]+((laneXBottom[1]-laneXBottom[0])/2) },
+            { lh: laneXHorizon[1]+((laneXHorizon[2]-laneXHorizon[1])/2), lb: laneXBottom[1]+((laneXBottom[2]-laneXBottom[1])/2) }
+        ];
+        for (let i = 0; i < N; i++) {
+            if (i % 2 === 0) continue; // dashes
+            let t = (i / N + gridOffset) % 1.0;
+            const tP = t * t;
+            const y  = horizonY + H * tP;
+            if (y < horizonY || y > playerY + 4) continue;
+            const frac = (y - horizonY) / H;
+            const seg  = Math.max(0.4, frac * 1.4);
+            divs.forEach(d => {
+                const dx = lerp(d.lh, d.lb, tP);
+                ctx.strokeStyle = `rgba(255,255,255,${0.08 + frac*0.12})`;
+                ctx.lineWidth   = seg;
+                ctx.shadowBlur  = 0;
+                ctx.beginPath(); ctx.moveTo(dx, y - seg*2); ctx.lineTo(dx, y + seg*2); ctx.stroke();
+            });
+        }
+    }
+
+    // ── DRAW: CARS ────────────────────────────────────────────────────────────
+    function drawEnemyCar(x, y, sc, color, typeIdx) {
+        const t = CFG.enemyTypes[typeIdx];
+        const w = t.w * sc, h = t.h * sc;
+        ctx.save(); ctx.translate(x, y - h/2);
+        const fl = flashTimer > 0 && Math.sin(Date.now()/60) > 0;
+        ctx.strokeStyle = fl ? color : color;
+        ctx.lineWidth   = Math.max(0.8, 2*sc);
+        ctx.shadowBlur  = 12*sc; ctx.shadowColor = color;
+        // Body (trapezoid, front toward player = bottom)
+        ctx.beginPath();
+        ctx.moveTo(-w*0.7,-h*0.5); ctx.lineTo(w*0.7,-h*0.5);
+        ctx.lineTo(w,h*0.5); ctx.lineTo(-w,h*0.5); ctx.closePath(); ctx.stroke();
+        // Windscreen
+        ctx.beginPath();
+        ctx.moveTo(-w*0.58,-h*0.12); ctx.lineTo(-w*0.52,-h*0.44);
+        ctx.lineTo(w*0.52,-h*0.44); ctx.lineTo(w*0.58,-h*0.12); ctx.stroke();
+        // Headlights
+        ctx.fillStyle = '#fffb00'; ctx.shadowBlur = 6*sc; ctx.shadowColor = '#fffb00';
+        ctx.beginPath(); ctx.arc(-w*0.68, h*0.4, 3*sc, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc( w*0.68, h*0.4, 3*sc, 0, Math.PI*2); ctx.fill();
+        ctx.restore();
+    }
+
+    function drawPlayerCar(x, y) {
+        const w = 44, h = 58;
+        const alpha = invulTimer > 0 && Math.sin(Date.now()/70) > 0 ? 0.25 : 1;
+        ctx.save(); ctx.globalAlpha = alpha; ctx.translate(x, y - h/2);
+        ctx.strokeStyle = '#39ff14'; ctx.lineWidth = 2.5;
+        ctx.shadowBlur = 20; ctx.shadowColor = '#39ff14';
+        // Body (trapezoid, rear toward player = bottom)
+        ctx.beginPath();
+        ctx.moveTo(-w*0.65,-h*0.5); ctx.lineTo(w*0.65,-h*0.5);
+        ctx.lineTo(w,h*0.5); ctx.lineTo(-w,h*0.5); ctx.closePath(); ctx.stroke();
+        // Rear window
+        ctx.beginPath();
+        ctx.moveTo(-w*0.55,-h*0.16); ctx.lineTo(-w*0.50,-h*0.44);
+        ctx.lineTo(w*0.50,-h*0.44); ctx.lineTo(w*0.55,-h*0.16); ctx.stroke();
+        // Roof line
+        ctx.beginPath(); ctx.moveTo(-w*0.85,h*0.28); ctx.lineTo(w*0.85,h*0.28); ctx.stroke();
+        // Tail lights
+        ctx.fillStyle = '#ff0044'; ctx.shadowBlur = 8; ctx.shadowColor = '#ff0044';
+        ctx.fillRect(-w*0.94, h*0.33, w*0.28, 9);
+        ctx.fillRect( w*0.66, h*0.33, w*0.28, 9);
+        ctx.restore();
+    }
+
+    // ── DRAW: HUD CANVAS ELEMENTS ─────────────────────────────────────────────
+    function drawSpeedometer() {
+        const spd   = Math.floor(speed);
+        const col   = speed > 250 ? '#ff0044' : speed > 180 ? '#ff9900' : '#39ff14';
+        const tSize = Math.min(3.2, canvas.width / 300);
+        ctx.save();
+        ctx.font      = `900 ${tSize}rem Orbitron, monospace`;
+        ctx.textAlign = 'right'; ctx.textBaseline = 'bottom';
+        ctx.fillStyle = col; ctx.shadowBlur = 18; ctx.shadowColor = col;
+        ctx.fillText(spd + ' km/h', canvas.width - 24, canvas.height - 22);
+        ctx.font = `${tSize * 0.32}rem Orbitron, monospace`;
+        ctx.globalAlpha = 0.4; ctx.shadowBlur = 0;
+        ctx.fillText('VITESSE', canvas.width - 24, canvas.height - 16);
+        ctx.restore();
+    }
+
+    function drawLaneIndicators() {
+        const iy = canvas.height - 28;
+        laneXBottom.forEach((lx, i) => {
+            const active = (i === playerLane);
+            ctx.save();
+            ctx.strokeStyle = active ? '#39ff14' : 'rgba(255,255,255,0.18)';
+            ctx.lineWidth   = active ? 3 : 1.5;
+            ctx.shadowBlur  = active ? 16 : 0; ctx.shadowColor = '#39ff14';
+            ctx.beginPath(); ctx.arc(lx, iy, active ? 17 : 13, 0, Math.PI*2); ctx.stroke();
+            ctx.font = active ? '900 13px Orbitron' : '11px Orbitron';
+            ctx.fillStyle   = active ? '#39ff14' : 'rgba(255,255,255,0.28)';
+            ctx.shadowBlur  = active ? 10 : 0;
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.fillText(['E','R','T'][i], lx, iy);
+            ctx.restore();
+        });
+    }
+
+    function drawExplosions() {
+        explosions.forEach(e => {
+            ctx.save(); ctx.globalAlpha = Math.max(0,e.life);
+            ctx.fillStyle = e.col; ctx.shadowBlur = 12; ctx.shadowColor = e.col;
+            ctx.beginPath(); ctx.arc(e.x, e.y, e.sz * e.life + 0.5, 0, Math.PI*2); ctx.fill();
+            ctx.restore();
+        });
+    }
+
+    // ── GAME LOOP ─────────────────────────────────────────────────────────────
+    function update(ts) {
+        if (!lastTime) lastTime = ts;
+        const dt = Math.min((ts - lastTime) / 1000, 0.05);
+        lastTime = ts;
+
+        // Speed
+        speed = Math.min(CFG.maxSpeed, speed + CFG.speedGain * dt);
+
+        // Distance
+        distance += speed * dt / 3600;
+        document.getElementById('hud-dist').innerText = distance.toFixed(2) + ' km';
+
+        // Grid scroll
+        gridOffset += speed * CFG.gridScrollRate * dt;
+        if (gridOffset >= 1) gridOffset -= 1;
+
+        // Player X smooth transition
+        playerX += (playerTargetX - playerX) * Math.min(1, dt * 12);
+
+        // Timers
+        if (invulTimer > 0) invulTimer = Math.max(0, invulTimer - dt*1000);
+        if (flashTimer > 0) flashTimer = Math.max(0, flashTimer - dt*1000);
+
+        // Enemies
+        updateEnemies(dt);
+        updateExplosions(dt);
+
+        // Spawn
+        const spawnInterval = Math.max(CFG.spawnIntervalMin, CFG.spawnIntervalBase - speed * 3.2);
+        const now = Date.now();
+        if (now - lastSpawn > spawnInterval) { spawnEnemy(); lastSpawn = now; }
+
+        // Sound
+        if (Math.floor(ts / 500) !== Math.floor((ts - dt*1000) / 500)) sfx('engine');
+    }
+
+    function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        drawSky();
+        drawSkyline();
+        drawRoad();
+        drawRoadGrid();
+
+        // Sort enemies back-to-front (depth ascending)
+        [...enemies].sort((a,b) => a.depth - b.depth).forEach(e => {
+            if (!e.alive) return;
+            const p = depthProject(e.depth, e.lane);
+            drawEnemyCar(p.x, p.y, p.sc, e.color, e.typeIdx);
+        });
+
+        drawPlayerCar(playerX, playerY);
+        drawExplosions();
+        drawSpeedometer();
+        drawLaneIndicators();
+
+        // Screen flash on crash
+        if (flashTimer > 0) {
+            ctx.save();
+            ctx.fillStyle = `rgba(255,0,68,${(flashTimer/800)*0.35})`;
+            ctx.fillRect(0,0,canvas.width,canvas.height);
+            ctx.restore();
+        }
+    }
+
+    function gameLoop(ts) {
+        if (gameState !== 'PLAYING') return;
+        update(ts); draw();
+        frameId = requestAnimationFrame(gameLoop);
+    }
+
+    // ── GAME MANAGEMENT ──────────────────────────────────────────────────────
+    function updateLivesUI() {
+        const el = document.getElementById('lives-row');
+        el.innerHTML = '';
+        for (let i = 0; i < CFG.lives; i++) {
+            const h = document.createElement('span');
+            h.className = 'life-heart' + (i >= lives ? ' dead' : '');
+            h.textContent = '♥';
+            el.appendChild(h);
+        }
+    }
+
+    function setLane(lane) {
+        if (lane === playerLane) return;
+        playerLane   = lane;
+        playerTargetX = laneXBottom[lane];
+        sfx('swerve');
+    }
+
+    function startGame() {
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        speed = CFG.baseSpeed; distance = 0; lives = CFG.lives;
+        playerLane = 1; gridOffset = 0; enemies = []; explosions = [];
+        invulTimer = 0; flashTimer = 0; lastSpawn = Date.now() + 1500;
+        computeRoad(); initSkyline(); initStars();
+        playerTargetX = playerX = laneXBottom[1];
+        updateLivesUI();
+        document.getElementById('hud-dist').innerText = '0.00 km';
+        document.getElementById('start-screen').classList.add('hidden');
+        document.getElementById('gameover-screen').classList.add('hidden');
+        gameState = 'PLAYING'; lastTime = 0;
+        sfx('start'); startMusic();
+        frameId = requestAnimationFrame(gameLoop);
+    }
+
+    function endGame() {
+        gameState = 'GAME_OVER';
+        stopMusic(); sfx('gameover');
+        cancelAnimationFrame(frameId);
+        saveHS(distance);
+        document.getElementById('go-text').innerHTML =
+            `Distance : <strong style="color:#00f0ff">${distance.toFixed(2)} km</strong>&nbsp;&nbsp;|&nbsp;&nbsp;`+
+            `Record : <strong style="color:#ff9900">${getHS()} km</strong>`;
+        document.getElementById('gameover-screen').classList.remove('hidden');
+    }
+
+    function exitToMenu() {
+        stopMusic(); cancelAnimationFrame(frameId);
+        window.location.href = './index.html';
+    }
+
+    // ── INPUT ─────────────────────────────────────────────────────────────────
+    window.addEventListener('keydown', e => {
+        if (e.repeat) return;
+        const k = e.key.toLowerCase();
+        if (e.key === 'Escape') { exitToMenu(); return; }
+        if (gameState === 'PLAYING') {
+            if (k === 'e') setLane(0);
+            else if (k === 'r') setLane(1);
+            else if (k === 't') setLane(2);
+        } else if (gameState === 'GAME_OVER' || gameState === 'START') {
+            if (k === 't') startGame();
+            else if (k === 'e') exitToMenu();
+        }
+    });
+
+    // ── INIT ─────────────────────────────────────────────────────────────────
+    computeRoad();
+    initStars(); initSkyline();
+    playerX = playerTargetX = canvas.width / 2;
+    draw(); // fond derrière l'overlay
+
+    if ('serviceWorker' in navigator)
+        window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js'));
+
+    function lockOrientation() {
+        if (screen.orientation && screen.orientation.lock)
+            screen.orientation.lock('landscape-primary').catch(() => {});
+    }
+    window.addEventListener('load', lockOrientation);
+    window.addEventListener('orientationchange', lockOrientation);
+    </script>
+</body>
+</html>
