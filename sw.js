@@ -1,7 +1,8 @@
-const CACHE_NAME = 'arducible-v3';
+const CACHE_NAME = 'arducible-v4';
 const ASSETS = [
     './index.html',
-    './manifest.json'
+    './manifest.json',
+    './img/Arducible.png'
 ];
 
 // Installation : Mise en cache des ressources
