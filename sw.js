@@ -1,4 +1,4 @@
-const CACHE_NAME = 'arducible-v7';
+const CACHE_NAME = 'arducible-v8';
 const ASSETS = [
     './index.html',
     './jeu1.html',
