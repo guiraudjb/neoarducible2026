@@ -237,9 +237,9 @@
     <div id="target-text-indicator" class="target-instruction">Visez la Cible 1</div>
 
     <div class="boules-container">
-        <div id="boule-1" class="petanque-boule targeted"><div class="boule-brand">ARDUCIBLE</div><div class="boule-indicator">CIBLE 1 (E)</div></div>
-        <div id="boule-2" class="petanque-boule"><div class="boule-brand">ARDUCIBLE</div><div class="boule-indicator">CIBLE 2 (R)</div></div>
-        <div id="boule-3" class="petanque-boule"><div class="boule-brand">ARDUCIBLE</div><div class="boule-indicator">CIBLE 3 (T)</div></div>
+        <div id="boule-1" class="petanque-boule targeted"><div class="boule-brand">#ARDUCIBLE</div><div class="boule-indicator">CIBLE 1 (E)</div></div>
+        <div id="boule-2" class="petanque-boule"><div class="boule-brand">#ARDUCIBLE</div><div class="boule-indicator">CIBLE 2 (R)</div></div>
+        <div id="boule-3" class="petanque-boule"><div class="boule-brand">#ARDUCIBLE</div><div class="boule-indicator">CIBLE 3 (T)</div></div>
     </div>
 
     <!-- ÉCRANS -->
@@ -695,6 +695,19 @@
             navigator.serviceWorker.register('./sw.js');
         });
     }
+    
+	</script>
+	<script>
+    function lockOrientation() {
+        if (screen.orientation && screen.orientation.lock) {
+            screen.orientation.lock('landscape').catch(function(error) {
+                console.log("Orientation lock failed: ", error);
+            });
+        }
+    }
+    // Appel au chargement et lors des changements de taille
+    window.addEventListener('load', lockOrientation);
+    window.addEventListener('resize', lockOrientation);
 </script>
 </body>
 </html>
