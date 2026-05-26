@@ -125,8 +125,9 @@
         lives:          3,
         invulDuration:  2200,  // ms after hit
         enemyDepthGain: 0.00095, // depth units per km/h per second
-        spawnIntervalBase: 1800, // ms
-        spawnIntervalMin:  500,
+        spawnIntervalBase: 5000, // ms at distance=0 (very sparse)
+        spawnIntervalMin:  1300, // ms floor (never denser than ~1 car/1.3s)
+        spawnMaxOnScreen:  2,    // cap simultaneous enemies
         gridLines:      22,
         gridScrollRate: 0.0024, // scroll per km/h per second
         enemyColors:   ['#ff00ff','#00f0ff','#ff9900','#fffb00','#ff0044'],
@@ -278,7 +279,16 @@
 
     // ── ENEMY SYSTEM ─────────────────────────────────────────────────────────
     function spawnEnemy() {
-        const lane     = Math.floor(Math.random() * 3);
+        // Ne pas spawner sur une voie déjà occupée
+        const occupied = new Set(enemies.filter(e => e.alive).map(e => e.lane));
+        const free = [0, 1, 2].filter(l => !occupied.has(l));
+        if (free.length === 0) return;
+
+        // Priorité à la voie du joueur (65%) pour forcer la réaction, sinon voie libre aléatoire
+        const lane = (free.includes(playerLane) && Math.random() < 0.65)
+            ? playerLane
+            : free[Math.floor(Math.random() * free.length)];
+
         const typeIdx  = Math.floor(Math.random() * CFG.enemyTypes.length);
         const colorIdx = Math.floor(Math.random() * CFG.enemyColors.length);
         enemies.push({ lane, depth: 0.01, typeIdx, color: CFG.enemyColors[colorIdx], alive: true });
@@ -290,8 +300,8 @@
             if (!e.alive) return;
             e.depth += gain * dt;
 
-            // Collision check
-            if (e.depth >= 0.93 && invulTimer <= 0) {
+            // Collision : uniquement pendant le croisement (0.88–1.0), pas après
+            if (e.depth >= 0.88 && e.depth <= 1.0 && invulTimer <= 0) {
                 if (e.lane === playerLane) {
                     e.alive = false;
                     spawnBurst(playerX, playerY, '#ff0044', 20);
@@ -550,10 +560,17 @@
         updateEnemies(dt);
         updateExplosions(dt);
 
-        // Spawn
-        const spawnInterval = Math.max(CFG.spawnIntervalMin, CFG.spawnIntervalBase - speed * 3.2);
+        // Spawn — progression basée sur la distance (sature à 4 km)
+        const distFactor    = Math.min(1.0, distance / 4.0);
+        const spawnInterval = Math.max(
+            CFG.spawnIntervalMin,
+            CFG.spawnIntervalBase - distFactor * (CFG.spawnIntervalBase - CFG.spawnIntervalMin) - speed * 0.4
+        );
         const now = Date.now();
-        if (now - lastSpawn > spawnInterval) { spawnEnemy(); lastSpawn = now; }
+        const aliveCount = enemies.filter(e => e.alive).length;
+        if (now - lastSpawn > spawnInterval && aliveCount < CFG.spawnMaxOnScreen) {
+            spawnEnemy(); lastSpawn = now;
+        }
 
         // Sound
         if (Math.floor(ts / 500) !== Math.floor((ts - dt*1000) / 500)) sfx('engine');
@@ -616,7 +633,7 @@
         if (audioCtx.state === 'suspended') audioCtx.resume();
         speed = CFG.baseSpeed; distance = 0; lives = CFG.lives;
         playerLane = 1; gridOffset = 0; enemies = []; explosions = [];
-        invulTimer = 0; flashTimer = 0; lastSpawn = Date.now() + 1500;
+        invulTimer = 0; flashTimer = 0; lastSpawn = Date.now() + 3500;
         computeRoad(); initSkyline(); initStars();
         playerTargetX = playerX = laneXBottom[1];
         updateLivesUI();
