@@ -14,9 +14,20 @@
 </head>
 <body>
     <div id="hud">
-        <div style="color: #ff0044; font-size: 1.5rem;">BOSS VÉCTORIEL</div>
-        <div style="width: 200px; height: 10px; background: #333; margin: 10px auto; border: 1px solid #fff;">
-            <div id="hp" style="width: 100%; height: 100%; background: #ff0044;"></div>
+        <div style="color: #ff0044; font-size: 1.5rem; letter-spacing: 4px;">BOSS VÉCTORIEL</div>
+        <div style="display:flex; gap:30px; justify-content:center; margin-top:8px;">
+            <div style="text-align:center;">
+                <div style="font-size:0.6rem; letter-spacing:3px; color:rgba(255,255,255,0.4); margin-bottom:4px;">BOSS</div>
+                <div style="width:180px; height:10px; background:#333; border:1px solid #ff0044; border-radius:3px; overflow:hidden;">
+                    <div id="boss-hp" style="width:100%; height:100%; background:#ff0044; transition:width 0.2s;"></div>
+                </div>
+            </div>
+            <div style="text-align:center;">
+                <div style="font-size:0.6rem; letter-spacing:3px; color:rgba(255,255,255,0.4); margin-bottom:4px;">VOUS</div>
+                <div style="width:180px; height:10px; background:#333; border:1px solid #00f0ff; border-radius:3px; overflow:hidden;">
+                    <div id="player-hp" style="width:100%; height:100%; background:#00f0ff; transition:width 0.2s;"></div>
+                </div>
+            </div>
         </div>
     </div>
     <canvas id="gc"></canvas>
@@ -27,50 +38,81 @@
         canvas.width = window.innerWidth; canvas.height = window.innerHeight;
 
         const laneX = [canvas.width*0.25, canvas.width*0.5, canvas.width*0.75];
-        let bossHP = 100, attacks = [], gameState = 'PLAYING';
+        let bossHP = 100, playerHP = 100, attacks = [], gameState = 'PLAYING';
+
+        function updateHUD() {
+            document.getElementById('boss-hp').style.width   = Math.max(0, bossHP) + '%';
+            document.getElementById('player-hp').style.width = Math.max(0, playerHP) + '%';
+        }
+
+        function endGame(victory) {
+            gameState = 'OVER';
+            const msg = victory ? '⚡ BOSS VAINCU !' : '💀 DÉFAITE';
+            ctx.fillStyle = 'rgba(3,5,8,0.85)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = victory ? '#39ff14' : '#ff0044';
+            ctx.font = 'bold 60px Orbitron, monospace';
+            ctx.textAlign = 'center';
+            ctx.fillText(msg, canvas.width/2, canvas.height/2);
+            setTimeout(() => window.location.href = './index.html', 2500);
+        }
 
         function spawnAttack() {
             if (gameState !== 'PLAYING') return;
             attacks.push({ lane: Math.floor(Math.random()*3), progress: 0 });
-            setTimeout(spawnAttack, 1500 - (100 - bossHP) * 5); // Le boss accélère
+            setTimeout(spawnAttack, Math.max(400, 1500 - (100 - bossHP) * 10));
         }
 
         function draw() {
             ctx.clearRect(0,0, canvas.width, canvas.height);
-            
-            // Dessin des 3 cibles (les zones de parade)
+
+            // Cibles de parade
+            const laneColors = ['#00f0ff', '#ff00ff', '#fffb00'];
             laneX.forEach((x, i) => {
-                ctx.strokeStyle = '#333'; ctx.lineWidth = 4;
+                ctx.strokeStyle = laneColors[i]; ctx.lineWidth = 3;
                 ctx.beginPath(); ctx.arc(x, canvas.height - 100, 40, 0, Math.PI*2); ctx.stroke();
-                ctx.fillStyle = '#fff'; ctx.font = '20px Orbitron'; ctx.textAlign = 'center';
+                ctx.fillStyle = laneColors[i]; ctx.font = 'bold 20px Orbitron'; ctx.textAlign = 'center';
                 ctx.fillText(['E', 'R', 'T'][i], x, canvas.height - 95);
             });
 
-            // Dessin du Boss
+            // Boss
             ctx.fillStyle = '#ff0044';
             ctx.fillRect(canvas.width/2 - 50, 50, 100, 50);
+            ctx.fillStyle = 'rgba(255,0,68,0.15)';
+            ctx.fillRect(canvas.width/2 - 80, 30, 160, 90);
 
-            // Dessin des attaques
-            attacks.forEach((atk, i) => {
-                atk.progress += 0.015;
-                ctx.strokeStyle = '#ff0044'; ctx.lineWidth = 6;
+            // Attaques
+            for (let i = attacks.length - 1; i >= 0; i--) {
+                const atk = attacks[i];
+                atk.progress += 0.012;
+                ctx.strokeStyle = '#ff0044'; ctx.lineWidth = 5;
+                ctx.shadowColor = '#ff0044'; ctx.shadowBlur = 10;
                 ctx.beginPath(); ctx.moveTo(canvas.width/2, 100);
                 ctx.lineTo(laneX[atk.lane], 100 + atk.progress * (canvas.height - 200));
                 ctx.stroke();
+                ctx.shadowBlur = 0;
 
-                if (atk.progress >= 1) { // Impact
-                    bossHP = Math.max(0, bossHP - 10);
-                    document.getElementById('hp').style.width = bossHP + '%';
+                if (atk.progress >= 1) {
+                    playerHP = Math.max(0, playerHP - 20);
+                    updateHUD();
                     attacks.splice(i, 1);
+                    if (playerHP <= 0) { endGame(false); return; }
                 }
-            });
-            requestAnimationFrame(draw);
+            }
+            if (gameState === 'PLAYING') requestAnimationFrame(draw);
         }
 
         window.addEventListener('keydown', e => {
+            if (gameState !== 'PLAYING') return;
             const lane = {'e':0, 'r':1, 't':2}[e.key.toLowerCase()];
-            const atk = attacks.find(a => a.lane === lane && a.progress > 0.7);
-            if (atk) { attacks.splice(attacks.indexOf(atk), 1); bossHP -= 5; } // Parade réussie
+            if (lane === undefined) return;
+            const idx = attacks.findIndex(a => a.lane === lane && a.progress > 0.65);
+            if (idx !== -1) {
+                attacks.splice(idx, 1);
+                bossHP = Math.max(0, bossHP - 10);
+                updateHUD();
+                if (bossHP <= 0) { endGame(true); return; }
+            }
         });
 
         spawnAttack();

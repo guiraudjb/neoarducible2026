@@ -1,11 +1,12 @@
-const CACHE_NAME = 'arducible-v10';
+const CACHE_NAME = 'arducible-v11';
 const ASSETS = [
     './index.html',
     './jeu1.html',
     './jeu2.html',
     './jeu3.html',
     './jeu4.html',
-    './jeu5.html', 
+    './jeu5.html',
+    './jeu6.html',
     './manifest.json',
     './img/Arducible.png'
 ];
